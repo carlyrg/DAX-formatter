@@ -1,0 +1,1227 @@
+Measure,expression
+Availability,"
+var MaxDate = MAX ( 'Date Dimension'[Date] )
+
+var AllUnits =
+CALCULATETABLE(
+    VALUES('Unit Historical Facts'[UnitKey]),
+    'Unit Dimension'[Unit Start Effective DateTime] <= MaxDate,
+    'Unit Dimension'[Unit End Effective DateTime] >= MaxDate ||
+    ISBLANK ( 'Unit Dimension'[Unit End Effective DateTime] ) ,
+    'Unit Dimension'[CountTowardsTotal] = 1
+)
+
+var OccupiedUnits = 
+CALCULATETABLE(
+    VALUES('Housing Contract Facts'[UnitKey]),
+    CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+    'Housing Contract Facts'[MoveInDate] <= MaxDate,
+    'Housing Contract Facts'[MoveOutDate] >= MaxDate ||
+    ISBLANK ( 'Housing Contract Facts'[MoveOutDate] ),    
+    ISBLANK ( 'Housing Contract Facts'[CancelledDate] ) ,
+    'Unit Dimension'[CountTowardsTotal] = 1
+)
+
+var VacantUnits = EXCEPT(AllUnits ,OccupiedUnits)                        
+                  
+var PendingMoveOuts = 
+CALCULATETABLE(
+    VALUES('Housing Contract Facts'[UnitKey]),
+    CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+    NOT ( ISBLANK ( 'Housing Contract Facts'[MoveOutDate] ) ),
+    'Housing Contract Facts'[MoveOutDate] > MaxDate,
+    ISBLANK ( 'Housing Contract Facts'[CancelledDate] ),
+    'Housing Contract Facts'[Transfer Out] = 1
+)
+
+var AvailableLessPendingMoveIns = DISTINCT(UNION(VacantUnits ,PendingMoveOuts))
+
+var PendingMoveIns = 
+CALCULATETABLE(
+    VALUES('Housing Contract Facts'[UnitKey]),
+    CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+    'Housing Contract Facts'[MoveInDate] > MaxDate,
+    NOT ( ISBLANK( 'Housing Contract Facts'[MoveInDate] ) ),
+    ISBLANK ( 'Housing Contract Facts'[CancelledDate] ),
+    'Housing Contract Facts'[Transfer In] = 1
+)
+
+var Availability = EXCEPT(AvailableLessPendingMoveIns, PendingMoveIns)            
+
+return COUNTROWS(Availability)"
+Average Daily Occupancy,"
+AVERAGEX( 
+    VALUES('Date Dimension'[Date]),
+    [Unit Occupancy %]
+)"
+Average Daily Occupied Units,"
+AVERAGEX( 
+    VALUES('Date Dimension'[Date]),
+    [Occupied Units]
+)"
+Average Length of Stay,"var MaxDateKey = MAX ( 'Date Dimension'[Date] )
+
+var Residents = 
+CALCULATETABLE(
+    VALUES('Housing Contract Facts'[IndividualId]),
+    ISBLANK ( 'Housing Contract Facts'[CancelledDate] ),
+    CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+    'Housing Contract Facts'[MoveInDate] <= MaxDateKey,
+    'Housing Contract Facts'[MoveOutDate] > MaxDateKey ||
+    ISBLANK ( 'Housing Contract Facts'[MoveOutDate] ) ,
+    NOT ( ISBLANK ( 'Housing Contract Facts'[MoveInDate] ) )
+)
+
+return 
+AVERAGEX ( 
+    'Individual Dimension' ,
+    AVERAGEX ( 
+    CALCULATETABLE ( 
+        'Housing Contract Facts' ,
+        Residents , 
+        CROSSFILTER ( 'Housing Contract Facts'[MoveInDate] , 'Date Dimension'[Date] , None ) ,
+        'Housing Contract Facts'[CreatedDate] <= MaxDateKey
+    )
+    , 'Housing Contract Facts'[Occupied Days] )
+)"
+Cancelled Housing Contracts,"
+var CancelledHousingContracts = 
+CALCULATETABLE(
+    'Housing Contract Facts',
+    USERELATIONSHIP('Housing Contract Facts'[CancelledDate], 'Date Dimension'[Date])
+)
+
+return COUNTROWS(CancelledHousingContracts)"
+Unit Occupancy %,"
+DIVIDE([Occupied Units], [Total Units], 0)"
+Individual Move Ins,"
+var MoveIns =
+CALCULATETABLE(
+    'Housing Contract Facts',
+    ISBLANK('Housing Contract Facts'[CancelledDate]),
+    'Housing Contract Facts'[Transfer In] = 0,
+    'Housing Contract Facts'[Second Resident] = ""No""
+)
+
+return COUNTROWS(MoveIns)"
+Individual Move Outs,"
+var MoveOuts =
+CALCULATETABLE(
+    'Housing Contract Facts',
+    ISBLANK('Housing Contract Facts'[CancelledDate]),
+    'Housing Contract Facts'[Transfer Out] = 0,
+    'Housing Contract Facts'[Second Resident] = ""No"",
+    USERELATIONSHIP('Housing Contract Facts'[MoveOutDate],'Date Dimension'[Date])
+)
+
+return COUNTROWS(MoveOuts)"
+Occupied Units,"
+var MaxDateKey = MAX ( 'Date Selection'[Date] )
+var MinDate = MIN ( 'Date Selection'[Date] )
+var DatesInRange = VALUES ( 'Date Selection'[Date] )
+
+var OccupiedUnits = 
+CALCULATETABLE (
+    VALUES ( 'Housing Contract Facts'[UnitKey] ) ,
+    CROSSFILTER ( 'Housing Contract Facts'[MoveInDate] , 'Date Dimension'[Date] , None ) ,
+    'Housing Contract Facts'[MoveInDate] <= MaxDateKey ,
+    'Housing Contract Facts'[MoveOutDate] > MaxDateKey || ISBLANK ( 'Housing Contract Facts'[MoveOutDate] ) ,
+    ISBLANK('Housing Contract Facts'[CancelledDate]),
+    NOT(ISBLANK('Housing Contract Facts'[MoveInDate])),
+    'Unit Dimension'[CountTowardsTotal] = 1,
+    'Housing Contract Facts'[Second Resident] = ""No""
+)
+
+return 
+
+COUNTROWS(OccupiedUnits) "
+Residents,"
+var MaxDateKey = MAX('Date Dimension'[Date])
+
+var Residents = 
+FILTER(
+    CALCULATETABLE(
+        'Housing Contract Facts',
+        ISBLANK ( 'Housing Contract Facts'[CancelledDate] ),
+        CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None)
+    ),
+    'Housing Contract Facts'[MoveInDate] <= MaxDateKey && 
+    NOT(ISBLANK('Housing Contract Facts'[MoveInDate])) &&
+    ('Housing Contract Facts'[MoveOutDate] > MaxDateKey || ISBLANK ( 'Housing Contract Facts'[MoveOutDate] ))
+)
+
+return COUNTROWS(Residents)"
+Stays,"
+var MaxDateKey = MAX ( 'Date Dimension'[Date] ) 
+
+var Stays = 
+CALCULATETABLE(
+    'Housing Contract Facts',
+    ISBLANK('Housing Contract Facts'[CancelledDate]),
+    CROSSFILTER('Housing Contract Facts'[MoveInDate] , 'Date Dimension'[Date] , None),
+    'Housing Contract Facts'[CreatedDate] <= MaxDateKey 
+)
+
+return 
+COUNTROWS(Stays)"
+Transfer Ins,"
+var MoveIns =
+CALCULATETABLE(
+    'Housing Contract Facts',
+    ISBLANK ( 'Housing Contract Facts'[CancelledDate] ),
+    'Housing Contract Facts'[Transfer In] = 1,
+    'Housing Contract Facts'[Second Resident] = ""No""
+)
+
+return COUNTROWS(MoveIns)"
+Transfer Outs,"
+var MoveOuts =
+CALCULATETABLE(
+    'Housing Contract Facts',
+    ISBLANK ( 'Housing Contract Facts'[CancelledDate] ),
+    'Housing Contract Facts'[Transfer Out] = 1,
+    'Housing Contract Facts'[Second Resident] = ""No"",
+    USERELATIONSHIP ( 'Housing Contract Facts'[MoveOutDate] , 'Date Dimension'[Date] )
+)
+
+return COUNTROWS(MoveOuts)"
+Unit Move Ins,"
+var MoveIns =
+CALCULATETABLE(    
+    SUMMARIZE(
+        'Housing Contract Facts',
+        'Housing Contract Facts'[UnitKey],
+        'Housing Contract Facts'[MoveInDate]
+    ),
+    ISBLANK('Housing Contract Facts'[CancelledDate]),
+    'Housing Contract Facts'[Transfer In] = 0,
+    'Housing Contract Facts'[Second Resident] = ""No""
+)
+
+return COUNTROWS(MoveIns)"
+Unit Move Outs,"
+var MoveOuts =
+CALCULATETABLE(    
+    SUMMARIZE(
+        'Housing Contract Facts',
+        'Housing Contract Facts'[UnitKey],
+        'Housing Contract Facts'[MoveOutDate]
+    ),
+    ISBLANK('Housing Contract Facts'[CancelledDate]),
+    'Housing Contract Facts'[Transfer Out] = 0,
+    'Housing Contract Facts'[Second Resident] = ""No"",
+    USERELATIONSHIP('Housing Contract Facts'[MoveOutDate] , 'Date Dimension'[Date])
+)
+
+return COUNTROWS(MoveOuts)"
+Upcoming Individual Move Ins,"
+var TodayDateKey = TODAY()
+
+var MoveIns =
+FILTER ( 
+    CALCULATETABLE(
+        'Housing Contract Facts',
+        ISBLANK('Housing Contract Facts'[CancelledDate]),
+        'Housing Contract Facts'[Transfer In] = 0 ,
+        CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+        'Housing Contract Facts'[Second Resident] = ""No""
+    ),
+    'Housing Contract Facts'[MoveInDate] > TodayDateKey && 
+    NOT(ISBLANK('Housing Contract Facts'[MoveInDate]))
+)
+
+return COUNTROWS(MoveIns)"
+Vacant Units,"
+var MaxDate = MAX('Date Dimension'[Date])
+
+var AllUnits =
+CALCULATETABLE(
+    VALUES('Unit Historical Facts'[UnitKey]),
+    'Unit Dimension'[Unit Start Effective DateTime] <= MaxDate,
+    'Unit Dimension'[Unit End Effective DateTime] >= MaxDate ||
+    ISBLANK ( 'Unit Dimension'[Unit End Effective DateTime] ),
+    'Unit Dimension'[CountTowardsTotal] = 1
+)
+
+var OccupiedUnits =
+CALCULATETABLE(
+    VALUES('Housing Contract Facts'[UnitKey]),
+    CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+    'Housing Contract Facts'[MoveInDate] <= MaxDate,
+    'Housing Contract Facts'[MoveOutDate] >= MaxDate ||
+    ISBLANK ( 'Housing Contract Facts'[MoveOutDate] ) ,
+    ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ) ,
+    'Unit Dimension'[CountTowardsTotal] = 1,
+    'Housing Contract Facts'[Second Resident] = ""No""
+)
+
+var VacantUnits =
+EXCEPT(AllUnits, OccupiedUnits)
+
+return COUNTROWS(VacantUnits)"
+Upcoming Individual Move Outs,"
+var TodayDateKey = TODAY()
+
+var MoveOuts =
+FILTER ( 
+    CALCULATETABLE(
+        'Housing Contract Facts',
+        ISBLANK('Housing Contract Facts'[CancelledDate]),
+        'Housing Contract Facts'[Transfer Out] = 0,
+        CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+        'Housing Contract Facts'[Second Resident] = ""No""
+    ),
+    'Housing Contract Facts'[MoveOutDate] > TodayDateKey &&
+    NOT(ISBLANK('Housing Contract Facts'[MoveOutDate]))
+)
+
+return COUNTROWS(MoveOuts)"
+Upcoming Unit Move Ins,"
+var TodayDateKey = TODAY()
+
+var MoveIns =
+FILTER ( 
+    CALCULATETABLE(
+        SUMMARIZE(
+            'Housing Contract Facts',
+            'Housing Contract Facts'[UnitKey],
+            'Housing Contract Facts'[MoveInDate]
+        ),
+        CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date] ,None),
+        'Housing Contract Facts'[Transfer In] = 0 ,
+        ISBLANK('Housing Contract Facts'[CancelledDate]),
+        'Housing Contract Facts'[Second Resident] = ""No""
+    ),
+    NOT(ISBLANK('Housing Contract Facts'[MoveInDate])) &&
+    'Housing Contract Facts'[MoveInDate] > TodayDateKey
+)    
+                
+return COUNTROWS(MoveIns)"
+Upcoming Unit Move Outs,"
+var TodayDateKey = TODAY()
+
+var MoveOuts =
+FILTER(
+    CALCULATETABLE(
+        SUMMARIZE(
+            'Housing Contract Facts',
+            'Housing Contract Facts'[UnitKey],
+            'Housing Contract Facts'[MoveOutDate]
+        ),
+        CROSSFILTER('Housing Contract Facts'[MoveInDate], 'Date Dimension'[Date], None),
+        'Housing Contract Facts'[Transfer Out] = 0,
+        ISBLANK('Housing Contract Facts'[CancelledDate])
+    ),
+    NOT(ISBLANK('Housing Contract Facts'[MoveOutDate])) &&
+    'Housing Contract Facts'[MoveOutDate] > TodayDateKey 
+)
+
+return COUNTROWS(MoveOuts)"
+Tour to Move In,"
+DIVIDE([Individual Move Ins], [Initial Tours], 0)"
+Inquiry to Move In,"
+DIVIDE([Individual Move Ins], [New Leads], 0)"
+Avg Days Inquiry to Move-In,"
+var MoveIns =
+CALCULATETABLE(
+    VALUES('Individual Dimension'[IndividualId]),
+    'Housing Contract Facts'[MoveInDate] <> BLANK()
+)
+
+var AvgDaysInquiryMoveIn = 
+AVERAGEX (
+ADDCOLUMNS ( 
+    MoveIns ,
+    ""InquiryDate"" , CALCULATE ( MIN ( 'Activity Facts'[UserLocalActivityCompletedDate] ) 
+            , 'Activity Facts'[Activity Sale Stage] = ""Inquiry"" 
+            , CROSSFILTER ( 'Activity Facts'[UserLocalActivityCompletedDate] , 'Date Dimension'[Date] , None ) )
+   ,""MoveInDate"" , CALCULATE ( MIN ( 'Housing Contract Facts'[MoveInDate] ) 
+            , 'Housing Contract Facts'[MoveInDate] <> BLANK()
+            , CROSSFILTER ( 'Housing Contract Facts'[MoveInDate] , 'Date Dimension'[Date] , Both ) )
+) , DATEDIFF ( [InquiryDate] , [MoveInDate] , DAY )
+)
+
+return 
+AvgDaysInquiryMoveIn"
+Inquiries per Move In,"DIVIDE([New Leads], [Individual Move Ins], 0)"
+Tours per Move In,"DIVIDE([Initial Tours], [Individual Move Ins], 0)"
+Call Outs per Move In,"
+DIVIDE([Call Outs], [Individual Move Ins], 0)"
+Created Housing Contracts,"
+var CreatedHousingContracts = 
+CALCULATETABLE(
+    'Housing Contract Facts',
+    USERELATIONSHIP('Housing Contract Facts'[CreatedDate], 'Date Dimension'[Date])
+)
+
+return COUNTROWS(CreatedHousingContracts)"
+Occupancy %,"
+IF(
+    [Capacity] = [Total Units],
+    [Unit Occupancy %],
+    [Bed Occupancy %]
+)"
+Occupancy,"
+IF(
+    [Capacity] = [Total Units],
+    [Occupied Units],
+    [Occupied Beds]
+)"
+Birthday Individuals,"
+var MonthsSelected = VALUES ( 'Date Dimension'[Month] )
+
+var EligibleBirthdays = 
+FILTER( 
+    ADDCOLUMNS( 
+        SUMMARIZE( 
+            'Individual Facts' ,
+            'Individual Dimension'[Individual Birthdate] ,
+            'Individual Facts'[IndividualId]
+        ),
+        ""BirthMonth"" , MONTH('Individual Dimension'[Individual Birthdate])
+    ),
+    [BirthMonth] in MonthsSelected
+)
+
+return COUNTROWS ( EligibleBirthdays )"
+Individuals With Missing Fields,"
+var Individuals =
+CALCULATETABLE(
+    'Individual Dimension',
+    FILTER(
+        'Individual Dimension',
+        'Individual Dimension'[Individual Home Phone] <> BLANK() ||
+        'Individual Dimension'[Individual Work Phone] <> BLANK() ||
+        'Individual Dimension'[Individual Mobile Phone] <> BLANK()
+    ),
+    'Individual Dimension'[Individual Address Line 1] <> BLANK(),
+    'Individual Dimension'[Individual City] <> BLANK(),
+    'Individual Dimension'[Individual Email] <> BLANK(),
+    'Individual Dimension'[Individual State] <> BLANK(),
+    'Individual Dimension'[Individual Postal Code] <> BLANK(),
+    'Individual Dimension'[Individual Lead Score/Status] <> BLANK(),
+    'Individual Dimension'[Individual Market Source] <> BLANK(),
+    'Individual Dimension'[Individual Care] <> BLANK()
+)
+
+return
+CALCULATE(
+    COUNTROWS(EXCEPT('Individual Dimension', Individuals)),
+    'Individual Facts'
+)"
+Total Units,"
+var MaxDate = MAX('Date Dimension'[Date])
+
+var Units =
+CALCULATETABLE(
+    'Unit Historical Facts',
+    'Unit Dimension'[Unit Start Effective DateTime] <= MaxDate,
+    'Unit Dimension'[Unit End Effective DateTime] >= MaxDate ||
+    ISBLANK ( 'Unit Dimension'[Unit End Effective DateTime] ) ,
+    'Unit Dimension'[CountTowardsTotal] = 1,
+    'Unit Dimension'[Unit Active Status] = ""Active""
+)
+
+return COUNTROWS(Units)"
+Validation,[Occupied Units] + [Vacant Units]
+Capacity,"
+var MaxDate = MAX('Date Dimension'[Date])
+
+var Units =
+CALCULATETABLE(
+    'Unit Historical Facts',
+    'Unit Dimension'[Unit Start Effective DateTime] <= MaxDate,
+    'Unit Dimension'[Unit End Effective DateTime] >= MaxDate ||
+    ISBLANK ( 'Unit Dimension'[Unit End Effective DateTime] ) ,
+    'Unit Dimension'[CountTowardsTotal] = 1,
+    'Unit Dimension'[Unit Active Status] = ""Active""
+)
+
+return 
+CALCULATE( 
+    SUM('Unit Dimension'[Unit Capacity]),
+    Units
+)"
+Attended,"
+var Maxdate = MAX ( 'Date Dimension'[Date] )
+var Mindate = MIN ( 'Date Dimension'[Date] )
+
+var Campaigns = 
+CALCULATETABLE(
+    VALUES('Campaign Dimension'[CampaignKey]),
+    'Campaign Dimension'[Campaign End Date] <= Maxdate,
+    'Campaign Dimension'[Campaign End Date] >= Mindate
+)
+                                    
+return 
+CALCULATE(
+    SUM('Campaign Facts'[Quantity Attended]),
+    Campaigns,
+    CROSSFILTER('Campaign Facts'[IndividualCampaignAttendedDate], 'Date Dimension'[Date], None)
+)"
+Invited,"
+var Maxdate = MAX ( 'Date Dimension'[Date] )
+var Mindate = MIN ( 'Date Dimension'[Date] )
+
+var Campaigns = 
+CALCULATETABLE(
+    VALUES('Campaign Dimension'[CampaignKey]),
+    'Campaign Dimension'[Campaign End Date] <= Maxdate,
+    'Campaign Dimension'[Campaign End Date] >= Mindate
+)
+                                    
+return 
+CALCULATE(
+    SUM('Campaign Facts'[Quantity Invited]),
+    Campaigns,
+    CROSSFILTER('Campaign Facts'[IndividualCampaignAttendedDate], 'Date Dimension'[Date], None)
+)"
+Attendance Rate,"
+DIVIDE([Attended], [Invited], 0)"
+Avg Attendance Rate,"
+var Maxdate = MAX ( 'Date Dimension'[Date] )
+var Mindate = MIN ( 'Date Dimension'[Date] )
+
+var Campaigns = CALCULATETABLE ( VALUES ( 'Campaign Dimension'[CampaignKey] ) ,
+                                    'Campaign Dimension'[Campaign End Date] <= Maxdate ,
+                                    'Campaign Dimension'[Campaign End Date] >= Mindate )
+
+return AVERAGEX ( Campaigns ,
+                    [Attendance Rate] )"
+Avg Campaigns Attended by Move Ins,"
+var MoveIns = 
+CALCULATETABLE(
+    VALUES('Individual Dimension'[IndividualId]),
+    'Housing Contract Facts'[Transfer In] = 0,
+    'Housing Contract Facts'[CancelledDate] = BLANK(),
+    CROSSFILTER ( 'Individual Dimension'[IndividualId] , 'Housing Contract Facts'[IndividualId] , Both),
+    'Housing Contract Facts'[Second Resident] = ""No""
+)
+
+return 
+AVERAGEX(
+    MoveIns,
+    [Total Campaigns Attended]
+)                                "
+Total Campaigns Attended,"
+CALCULATE(
+    COUNTROWS('Campaign Facts'),
+    'Campaign Facts'[Quantity Attended] <> 0,
+    CROSSFILTER('Campaign Facts'[IndividualCampaignAttendedDate], 'Date Dimension'[Date], None)
+)"
+Pct of Move Ins Attending Campaigns,"
+//Denominator
+var IndividualsMovingIn =
+CALCULATETABLE(
+    VALUES('Individual Dimension'[IndividualId]),
+    'Housing Contract Facts'[Transfer In] = 0,
+    'Housing Contract Facts'[CancelledDate] = BLANK(),
+    CROSSFILTER('Individual Dimension'[IndividualId], 'Housing Contract Facts'[IndividualId], Both),
+    'Housing Contract Facts'[Second Resident] = ""No""
+)
+
+var CountOfMoveIns = COUNTROWS ( IndividualsMovingIn )
+
+var IndividualsAttendingCampaigns = 
+CALCULATETABLE(
+    VALUES('Campaign Facts'[IndividualId]),
+    'Campaign Facts'[Quantity Attended] <> 0,
+    CROSSFILTER('Campaign Facts'[IndividualCampaignAttendedDate], 'Date Dimension'[Date], None)
+)
+
+//Numerator
+var IndividualsMovingInThatHaveAttendedCampaigns = COUNTROWS ( INTERSECT ( IndividualsMovingIn , IndividualsAttendingCampaigns ) )                                
+
+return 
+DIVIDE ( IndividualsMovingInThatHaveAttendedCampaigns , CountOfMoveIns )"
+Campaign Budget,"
+IF(
+    NOT(ISBLANK([Invited])),
+    SUMX( 
+        FILTER(
+            ADDCOLUMNS( 
+                SUMMARIZE( 
+                    'Campaign Facts',
+                    'Campaign Facts'[CommunityKey],
+                    'Campaign Facts'[CampaginKey],
+                    'Campaign Facts'[Budget]
+                ),
+                ""Invitations"", [Invited]
+            ),
+            [Invitations] >= 1
+        ),
+        'Campaign Facts'[Budget]
+    )
+)"
+Cost per Attendee,"DIVIDE ( [Campaign Budget] , [Attended] )"
+Campaign Individuals,COUNTROWS ( 'Campaign Facts' )
+Contacts With Missing Fields,"
+var Contacts =
+CALCULATETABLE(
+    'Contact Dimension',
+    FILTER(
+        'Contact Dimension',
+        'Contact Dimension'[Contact Home Phone] <> BLANK() ||
+        'Contact Dimension'[Contact Mobile Phone] <> BLANK() ||
+        'Contact Dimension'[Contact Work Phone] <> BLANK()
+    ),
+    'Contact Dimension'[Contact Address Line1] <> BLANK(),
+    'Contact Dimension'[Contact City] <> BLANK(),
+    'Contact Dimension'[Contact State] <> BLANK(),
+    'Contact Dimension'[Contact Postal Code] <> BLANK(),
+    'Contact Dimension'[Contact Email] <> BLANK()
+)
+
+return 
+CALCULATE(
+    COUNTROWS(EXCEPT('Contact Dimension', Contacts)),
+    'Individual Facts'
+)"
+Transactions,"
+
+    COUNTROWS ( 'Transaction Facts' ) "
+Floorplan Rank,"
+IF(
+    HASONEVALUE('Individual Dimension'[Individual Full Name]),
+    IF(
+        NOT(ISBLANK([WaitListDate])),
+        RANKX(
+            ALLEXCEPT('Wait List Facts', 'Wait List Facts'[Date], 'Wait List Facts'[Floor Plan]),
+            [WaitListDate],
+            ,
+            ASC,
+            Dense
+        ) - 1
+    )
+)"
+Waitlist Individuals,"
+var Waitlist = VALUES ( 'Wait List Facts'[IndividualId] )
+
+return COUNTROWS ( Waitlist )"
+Waitlist Rank,"
+IF(
+    HASONEVALUE('Individual Dimension'[Individual Full Name]),
+    IF(
+        NOT(ISBLANK([WaitListDate])),
+        RANKX(
+            ALLEXCEPT('Wait List Facts', 'Wait List Facts'[Date] ,'Location Dimension'[Location]),
+            [WaitListDate],
+            ,
+            ASC,
+            Dense
+        ) - 1
+    )
+)"
+All Activities,"
+                                              
+var Completed =
+COUNTROWS ( 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCompletedDate] ) ) )
+)
+
+var Cancelled = 
+COUNTROWS ( 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityCanceledDate], 'Date Dimension'[Date])
+)
+)
+
+var Rescheduled =
+COUNTROWS ( 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityRescheduledDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityRescheduledDate], 'Date Dimension'[Date])
+)
+)
+
+var Created =
+COUNTROWS ( 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCreatedDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityCreatedDate], 'Date Dimension'[Date])
+)
+)
+
+var Due =
+COUNTROWS ( 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityStartDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityStartDate], 'Date Dimension'[Date])
+)
+)
+
+return
+SWITCH (
+    SELECTEDVALUE ( 'Activity Selection'[Activity Selection] ),
+    ""Completed"",
+        Completed,
+    ""Cancelled"",
+            Cancelled,
+    ""Rescheduled"",
+            Rescheduled,
+    ""Due"",
+            Due,
+    ""Created"",
+            Created,
+    Completed
+)"
+All Completed Activities,"
+CALCULATE ( COUNTROWS ( 'Activity Facts' ) ,
+                ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ) ,
+                NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCompletedDate] ) ) 
+                )"
+Avg Days Inquiry to Move-In (Activity),"
+var MoveIns =
+CALCULATETABLE(
+    VALUES('Activity Facts'[IndividualId]),
+    'Activity Facts'[Activity Sale Stage] = ""Move-In""
+)
+
+var AvgDaysInquiryMoveIn = 
+AVERAGEX (
+ADDCOLUMNS ( 
+    MoveIns ,
+    ""InquiryDate"" , CALCULATE ( MIN ( 'Activity Facts'[UserLocalActivityCompletedDate] ) 
+            , 'Activity Facts'[Activity Sale Stage] = ""Inquiry"" 
+            , CROSSFILTER ( 'Activity Facts'[UserLocalActivityCompletedDate] , 'Date Dimension'[Date] , None ) )
+   ,""MoveInDate"" , CALCULATE ( MIN ( 'Date Dimension'[Date] ) 
+            , 'Activity Facts'[Activity Sale Stage] = ""Move-In"" 
+            , CROSSFILTER ( 'Activity Facts'[UserLocalActivityCompletedDate] , 'Date Dimension'[Date] , Both ) )
+) , DATEDIFF ( [InquiryDate] , [MoveInDate] , DAY )
+)
+
+return 
+AvgDaysInquiryMoveIn"
+Deposit to Move In (Activities),"
+DIVIDE ( [Initial Move-In (Activities)] , [Initial Deposits] )"
+Deposits,"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Type Master] = ""Deposit""
+)"
+Initial Deposits,"
+var Tours =
+CALCULATETABLE(
+    VALUES('Activity Facts'[IndividualId]),
+    'Activity Facts'[Activity Sale Stage] = ""Deposit"",
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Tours)"
+Initial Move-In (Activities),"
+var MoveIns =
+CALCULATETABLE(
+    VALUES('Activity Facts'[IndividualId]),
+    'Activity Facts'[Activity Sale Stage] = ""Move-In"",
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(MoveIns)"
+Initial Tours,"
+var Tours =
+CALCULATETABLE(
+    VALUES('Activity Facts'[IndividualId]),
+    'Activity Facts'[Activity Sale Stage] = ""Tour"",
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Tours)"
+Inquiries,"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Type Master] in {""Inquiry"", ""Web Form"", ""Referral""}
+)"
+Inquiry to Move In (Activities),"
+DIVIDE ( [Initial Move-In (Activities)] , [New Leads] )"
+Inquiry to Move In (Activities) (Non Sale Stage),"
+DIVIDE ( [Move Ins (Activity)] , [Inquiries] )"
+Inquiry to Tour,"
+DIVIDE ( [Initial Tours] , [New Leads] )"
+Inquiry to Tour (Non Sale Stage),"
+DIVIDE ( [Tours] , [Inquiries] )"
+Move Ins (Activity),"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Type Master] in {""Move In"", ""Admission""}
+)"
+Overdue Individuals,"
+// This shows overdue indiviudals based on their inquiry date
+var TodayDateKey = TODAY()
+
+var OverdueActivities =
+COUNTROWS(
+    FILTER(
+        CALCULATETABLE(
+            'Activity Facts',
+            'Activity Facts'[Activity Status Master] = ""Assigned"",
+            CROSSFILTER('Activity Facts'[UserLocalActivityCompletedDate], 'Date Dimension'[Date], None),
+            'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+            CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+        ),
+        'Activity Facts'[UserLocalActivityStartDate] < TodayDateKey
+    )
+)
+
+var OverdueIndivduals =
+FILTER(
+    CALCULATETABLE(
+        'Individual Dimension',
+        USERELATIONSHIP('Individual Dimension'[UserLocalIndividualInquiryDate], 'Date Dimension'[Date])
+    ),
+    NOT(ISBLANK(OverdueActivities))
+)
+
+return COUNTROWS(OverdueIndivduals)"
+Pending Deposits,"
+var TodayDateKey = MAX('Date Dimension'[Date])
+
+var PendingTours =
+CALCULATETABLE(
+    'Activity Facts',
+    'Activity Facts'[Activity Sale Stage] = ""Deposit"",
+    CROSSFILTER('Activity Facts'[UserLocalActivityCompletedDate], 'Date Dimension'[Date], None),
+    'Activity Facts'[UserLocalActivityStartDate] > TodayDateKey,
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(PendingTours)"
+Cancelled Referral Activities,"
+var Activities = 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityCanceledDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] = ""Referral"",
+    CROSSFILTER('Individual Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Cancelled Individual Activities,"
+var Activities =
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityCanceledDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Rescheduled Referral Activities,"
+var Activities = 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityRescheduledDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] = ""Referral"",
+    CROSSFILTER('Individual Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Overdue Referral Activities,"
+var TodayDateKey = TODAY()
+
+var Activities =
+FILTER(
+    CALCULATETABLE(
+        'Activity Facts',
+        'Activity Facts'[Activity Status Master] = ""Assigned"",
+        USERELATIONSHIP ( 'Activity Facts'[UserLocalActivityStartDate] , 'Date Dimension'[Date] ),
+        'Activity Facts'[Individual Type] = ""Referral"",
+        CROSSFILTER('Individual Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+    ),
+    'Activity Facts'[UserLocalActivityStartDate] < TodayDateKey
+)
+
+return COUNTROWS(Activities) "
+Due Referral Activities,"
+var Activities =
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityStartDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityStartDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] = ""Referral"",
+    CROSSFILTER('Individual Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Completed Referral Activities,"
+var Activities = 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCompletedDate] ) ),
+    'Activity Facts'[Individual Type] = ""Referral"",
+    CROSSFILTER('Individual Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities) "
+Created Referral Activities,"
+var Activities =
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCreatedDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityCreatedDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] = ""Referral"",
+    CROSSFILTER('Individual Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Created Individual Activities,"
+var Activities =
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCreatedDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityCreatedDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Completed Individual Activities,"
+var Activities =
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCompletedDate] ) ),
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Due Individual Activities,"
+var Activities =
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityStartDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityStartDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+New Leads,"
+var NewLeads =
+// CALCULATETABLE(
+//     'Individual Dimension',
+//     'Activity Facts'[Activity Sale Stage] = ""Inquiry"",
+//     'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+//     CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+// )
+
+CALCULATETABLE(
+    'Individual Dimension',
+    USERELATIONSHIP('Individual Dimension'[UserLocalIndividualInquiryDate], 'Date Dimension'[Date]),
+    'Individual Facts'
+)
+
+return 
+COUNTROWS(NewLeads)"
+No Next Step Individuals,"
+var TodayDateKey = TODAY()
+
+var NoNextStepIndividuals =
+CALCULATE(
+    COUNTROWS(
+        FILTER(
+            ADDCOLUMNS(
+                'Individual Dimension',
+                ""Scheduled Activities"",
+                CALCULATE(
+                    COUNTROWS('Activity Facts'),
+                    ALLEXCEPT('Activity Facts', 'Individual Dimension'),
+                    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityStartDate] ) ),
+                    ISBLANK ( 'Activity Facts'[UserLocalActivityCompletedDate] ),
+                    ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ),
+                    ISBLANK ( 'Activity Facts'[UserLocalActivityRescheduledDate] ),
+                    CROSSFILTER('Activity Facts'[UserLocalActivityCompletedDate], 'Date Dimension'[Date], None)
+                )
+            ),
+            [Scheduled Activities] = BLANK()
+        )
+    ),
+    'Individual Facts' ,
+    USERELATIONSHIP ( 'Individual Dimension'[UserLocalIndividualInquiryDate] , 'Date Dimension'[Date] ),
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return  NoNextStepIndividuals"
+Rescheduled Individual Activities,"
+var Activities =
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityRescheduledDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityRescheduledDate], 'Date Dimension'[Date]),
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(Activities)"
+Pending Tours,"
+var TodayDateKey = MAX('Date Dimension'[Date])
+
+var PendingTours =
+CALCULATETABLE(
+    'Activity Facts',
+    'Activity Facts'[Activity Sale Stage] = ""Tour"",
+    CROSSFILTER('Activity Facts'[UserLocalActivityCompletedDate], 'Date Dimension'[Date], None),
+    'Activity Facts'[UserLocalActivityStartDate] > TodayDateKey,
+    'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+    CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+)
+
+return COUNTROWS(PendingTours)                "
+Reinquiries,"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Reinquiry] = TRUE()
+)"
+Scheduled Activities,"
+var TodayDateKey = TODAY()
+
+var ActivitiesScheduled = CALCULATETABLE ( 'Activity Facts' ,
+                    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityStartDate] ) ),
+                    ISBLANK ( 'Activity Facts'[UserLocalActivityCompletedDate] ),
+                    ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ),
+                    ISBLANK ( 'Activity Facts'[UserLocalActivityRescheduledDate] ),
+                    'Activity Facts'[UserLocalActivityStartDate] >= TodayDateKey ,
+                    CROSSFILTER('Activity Facts'[UserLocalActivityCompletedDate], 'Date Dimension'[Date], None)
+)
+
+return
+COUNTROWS ( ActivitiesScheduled )
+"
+Tours,"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Type Master] = ""Tour""
+)"
+Tour to Deposit,"
+DIVIDE ( [Initial Deposits] , [Initial Tours] )"
+Tour/Inquiry,"
+DIVIDE ( [Initial Tours] , [New Leads] )"
+Tour to Move In (Activities),"
+DIVIDE ( [Initial Move-In (Activities)] , [Initial Tours] )"
+Overdue Individual Activities,"
+// This shows overdue activities based on the date that they were due. 
+var TodayDateKey = TODAY()
+
+var Activities =
+FILTER(
+    CALCULATETABLE(
+        'Activity Facts',
+        'Activity Facts'[Activity Status Master] = ""Assigned"",
+        USERELATIONSHIP ( 'Activity Facts'[UserLocalActivityStartDate] , 'Date Dimension'[Date] ),
+        'Activity Facts'[Individual Type] in {""Prospect"", ""Resident""},
+        CROSSFILTER('Referring Contact Dimension'[IndividualId], 'Activity Facts'[IndividualId], None)
+    ),
+    'Activity Facts'[UserLocalActivityStartDate] < TodayDateKey
+)
+
+return COUNTROWS(Activities)"
+Toured New Leads,"
+var NewLeads =
+
+CALCULATETABLE(
+    VALUES ( 'Individual Dimension'[IndividualId] ),
+    USERELATIONSHIP('Individual Dimension'[UserLocalIndividualInquiryDate], 'Date Dimension'[Date]),
+    'Individual Facts'
+)
+
+var TouredLeads =
+CALCULATETABLE(
+    
+    CALCULATETABLE ( 
+    VALUES ( 'Individual Dimension'[IndividualId] ),
+    NOT ( ISBLANK ( 'Individual Dimension'[UserLocalIndividualTourDate] ) ) )
+    ,
+    USERELATIONSHIP ( 'Individual Dimension'[UserLocalIndividualTourDate] , 'Date Dimension'[Date]),
+    'Individual Facts' 
+)
+
+var TouredNewLeads =
+INTERSECT(
+    NewLeads,
+    TouredLeads
+)
+
+return COUNTROWS(TouredNewLeads)"
+Tour to Move In (Activities) (Non Sale Stage),"
+DIVIDE ( [Move Ins (Activity)] , [Tours] )"
+Avg Days Inquiry to Tour,"
+var Tours =
+CALCULATETABLE(
+    VALUES('Activity Facts'[IndividualId]),
+    'Activity Facts'[Activity Sale Stage] = ""Tour""
+)
+
+var AvgDaysInquiryTour = 
+AVERAGEX (
+ADDCOLUMNS ( 
+    Tours ,
+    ""InquiryDate"" , CALCULATE ( MIN ( 'Activity Facts'[UserLocalActivityCompletedDate] ) 
+            , 'Activity Facts'[Activity Sale Stage] = ""Inquiry"" 
+            , CROSSFILTER ( 'Activity Facts'[UserLocalActivityCompletedDate] , 'Date Dimension'[Date] , None ) )
+   ,""TourDate"" , CALCULATE ( MIN ( 'Date Dimension'[Date] ) 
+            , 'Activity Facts'[Activity Sale Stage] = ""Tour"" 
+            , CROSSFILTER ( 'Activity Facts'[UserLocalActivityCompletedDate] , 'Date Dimension'[Date] , Both ) )
+) , DATEDIFF ( [InquiryDate] , [TourDate] , DAY )
+)
+
+return 
+AvgDaysInquiryTour"
+Call Outs,"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Type Master] = ""Call Out""
+)"
+Contact Call Outs,"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Type Master] = ""Call Out"",
+    'Activity Facts'[Activity Resolution Master] <> ""Attempt""
+)"
+Contact Call Outs %,"
+DIVIDE([Contact Call Outs], [Call Outs], 0)"
+Outreach Appointments,"
+CALCULATE(
+    [Completed Referral Activities],
+    'Activity Facts'[Activity Type Master] = ""Outreach Appointment""
+)"
+Outreach Call Outs,"
+CALCULATE(
+    [Completed Referral Activities],
+    'Activity Facts'[Activity Type Master] = ""Call Outs""
+)"
+Retours,"
+CALCULATE(
+    [Completed Individual Activities],
+    'Activity Facts'[Activity Type Master] = ""Tour"" ,
+    'Activity Facts'[Activity Sale Stage] <> ""Tour""
+)"
+All Cancelled Activities,"
+var Cancelled = 
+COUNTROWS ( 
+CALCULATETABLE(
+    'Activity Facts',
+    NOT ( ISBLANK ( 'Activity Facts'[UserLocalActivityCanceledDate] ) ),
+    USERELATIONSHIP('Activity Facts'[UserLocalActivityCanceledDate], 'Date Dimension'[Date])
+)
+)
+return
+Cancelled"
+Initial Deposits Goal,"
+var GoalValue = 
+CALCULATE(
+    SUM('Goal Community Facts'[Goal Community Value]),
+    'Goal Dimension'[Goal] = ""Deposits""
+)
+
+return GoalValue"
+Occupancy Goal,"
+var GoalValue = 
+CALCULATE(
+    SUM('Goal Community Facts'[Goal Community Value]),
+    'Goal Dimension'[Goal] = ""Occupancy""
+)
+
+return GoalValue/100"
+Occupancy Variance,"
+[Average Daily Occupancy] - [Occupancy Goal] "
+Initial Deposits Variance,"
+[Initial Deposits] - [Initial Deposits Goal]"
+Initial Tours Variance,"
+[Initial Tours] - [Initial Tours Goal]"
+Initial Inquiries Variance,"
+[New Leads] - [Initial Inquiries Goal]"
+Initial Inquiries Goal,"
+var GoalValue = 
+CALCULATE(
+    SUM('Goal Community Facts'[Goal Community Value]),
+    'Goal Dimension'[Goal] = ""Inquiry""
+)
+
+return GoalValue"
+Initial Tours Goal,"
+var GoalValue = 
+CALCULATE(
+    SUM('Goal Community Facts'[Goal Community Value]),
+    'Goal Dimension'[Goal] = ""Initial Tours""
+)
+
+return GoalValue"
+Retours Goal,"
+var GoalValue = 
+CALCULATE(
+    SUM('Goal Community Facts'[Goal Community Value]),
+    'Goal Dimension'[Goal] = ""Retours""
+)
+
+return GoalValue"
+Retours Variance,"
+[Retours] - [Retours Goal]"
+Move Ins Goal,"
+var GoalValue = 
+CALCULATE(
+    SUM('Goal Community Facts'[Goal Community Value]),
+    'Goal Dimension'[Goal] = ""Move Ins""
+)
+
+return GoalValue"
+Move Ins Variance,"
+[Individual Move Ins] - [Move Ins Goal]"
+Call Outs Goal,"
+var GoalValue = 
+CALCULATE(
+    SUM('Goal Community Facts'[Goal Community Value]),
+    'Goal Dimension'[Goal] = ""Call Outs""
+)
+
+return GoalValue"
+Call Outs Variance,"
+[Call Outs] - [Call Outs Goal]"
+Profiles Missing Fields,"
+[Contacts With Missing Fields] + [Individuals With Missing Fields] + [Referrals With Missing Fields]"
+Referral Sources,"
+var Referrals =
+CALCULATETABLE(
+    'Referral Facts'
+)
+
+return 
+
+COUNTROWS(Referrals) "
+Referrals With Missing Fields,"
+var Referrals =
+CALCULATETABLE(
+    'Referring Contact Dimension',
+    FILTER(
+        'Referring Contact Dimension',
+        'Referring Contact Dimension'[Referral Home Phone] <> BLANK() ||
+        'Referring Contact Dimension'[Referral Mobile Phone] <> BLANK() ||
+        'Referring Contact Dimension'[Referral Work Phone] <> BLANK()
+    ),
+    'Referring Contact Dimension'[Referral Address Line1] <> BLANK(),
+    'Referring Contact Dimension'[Referral City] <> BLANK(),
+    'Referring Contact Dimension'[Referral State] <> BLANK(),
+    'Referring Contact Dimension'[Referral Postal Code] <> BLANK(),
+    'Referring Contact Dimension'[Referral Email] <> BLANK(),
+    'Referring Contact Dimension'[Referral Company/Organization] <> BLANK(),
+    'Referring Contact Dimension'[Referral Category] <> BLANK()
+)
+
+return 
+CALCULATE(
+    COUNTROWS(EXCEPT('Referring Contact Dimension', Referrals)),
+    'Referral Facts'
+)"
